@@ -548,12 +548,11 @@
 
         // time formatting functions
         function hourMinuteMilliseconds(d) {
-          return d3.time.format("%H:%M:%L")(new Date(d))
+          return d3.time.format("%H:%M:%S")(new Date(d * 1000))
         }
 
         function milliseconds(d) {
-          // needed units smaller than milliseconds
-          return d3.format(".2f")((new Date(d)).getUTCMilliseconds() + (d - Math.floor(d)))
+          return d3.time.format("%L")(new Date(d * 1000))
         }
 
       </script>
