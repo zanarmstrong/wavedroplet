@@ -201,15 +201,23 @@
         }
 
         function to_stream_key(d) {
-          return d['ta'] + '-' + d['ra'];
+          return d['ta'].replace(/:/g, '') + '_' + d['ra'].replace(/:/g, '');
         }
         
+        // there must be a beter way... 
         function from_stream_key(key) {
-          return {'ta': key.split('-')[0], 'ra': key.split('-')[1]};
-        }
-
-        function to_valid_selector_id(key) {
-          return key.replace(/:/g, '').replace('-', '_');
+          var z = key.split('_')
+          var ta = z[0].slice(0,2) + ':' + z[0].slice(2,4) + 
+            ':' + z[0].slice(4,6) + 
+            ':' + z[0].slice(6,8) + 
+            ':' + z[0].slice(8,10) + 
+            ':' + z[0].slice(10,12);
+          var ra = z[1].slice(0,2) + ':' + z[1].slice(2,4) + 
+            ':' + z[1].slice(4,6) + 
+            ':' + z[1].slice(6,8) + 
+            ':' + z[1].slice(8,10) + 
+            ':' + z[1].slice(10,12);
+          return {'ta': ta, 'ra': ra};
         }
 
         function complement_stream_id(key) {
@@ -237,6 +245,7 @@
           });
 
           // zan: todo - make this a dictionary? 
+
           stream2packets = d3.nest()
             .key(function(d) {return to_stream_key(d);})
             .sortKeys(function(key1, key2) {
@@ -352,12 +361,12 @@
             var col = i % n_cols;
             var row = Math.floor(i / n_cols);
             svg.append('text')
-              .attr('class', 'legend legend_' + to_valid_selector_id(d.key))
+              .attr('class', 'legend legend_' + d.key)
               .attr('x', col * total_length + 2 * padding)
               .attr('y', (row + 1.5) * padding)
               .text(d.key)
               .on('click', function(){
-                select_stream(to_valid_selector_id(this.textContent));
+                select_stream(this.textContent);
             });
           });
         }
@@ -404,7 +413,7 @@
           reticle[field] = focus;
 
           stream2packets.forEach(function(d, i) {
-            var current_plot_id = 'pcap_vs_' + field + '_' + to_valid_selector_id(d.key);
+            var current_plot_id = 'pcap_vs_' + field + '_' + d.key;
 
             svg
               .selectAll(current_plot_id)
@@ -499,7 +508,7 @@
               .on('click', function() {
                 d = find_packet(d3.mouse(this)[0], d3.mouse(this)[1], field);
                 if (!d) return;
-                select_stream(to_valid_selector_id(to_stream_key(d)));
+                select_stream(to_stream_key(d));
                 draw_crosshairs(d, field);
               })
               .on('mousemove', function() {
@@ -611,7 +620,7 @@
           d3.selectAll(".points").attr("fill", "grey")
 
           // if new stream selected, update view & selected stream
-          if (!selected_stream || streamId != to_valid_selector_id(selected_stream.key)){
+          if (!selected_stream || streamId != selected_stream.key){
             // select current legend
             d3.select('.legend_' + streamId).classed("selected", true);
             d3.select('.legend_' + complement_stream_id(streamId)).classed("selectedComplement", true); 
@@ -622,9 +631,9 @@
             }
             // to do - make this work for flip also
             for (var idx in stream2packets) {
-              if (to_valid_selector_id(stream2packets[idx].key) == streamId) {
+              if (stream2packets[idx].key == streamId) {
                 // set selected_stream so that it's locked to that stream when mousing over
-                butter_bar('Locked down to ' + stream2packets[idx].key);
+                butter_bar('Locked down to ' + streamId);
                 selected_stream = stream2packets[idx];
                 break;
               }
