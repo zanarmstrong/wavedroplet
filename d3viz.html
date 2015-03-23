@@ -368,7 +368,6 @@
               .attr('y', (row + 1.5) * padding)
               .text(d.key)
               .on('click', function(){
-                console.log("clicked!", this, this.x)
                 select_stream(to_valid_selector_id(this.textContent));
             });
           });
@@ -540,7 +539,6 @@
           }
 
           var idx = binary_search_by('pcap_secs')(search_in, pcap_secs, 0);
-          console.log(field)
           d = closest_to_y(search_in, idx, x, y, scaled(field), field);
 
           return d;
@@ -626,7 +624,6 @@
           // if new stream selected, update view & selected stream
           if (!selected_stream || streamId != to_valid_selector_id(selected_stream.key)){
             // select current legend
-            console.log('.legend_' + streamId)
             d3.select('.legend_' + streamId).classed("selected", true);
             d3.select('.legend_' + complement_stream_id(streamId)).classed("selectedComplement", true); 
             // select these points
