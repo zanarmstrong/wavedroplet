@@ -15,7 +15,7 @@
       fill: orange;
     }
 
-    .selectedCompliment {
+    .selectedComplement {
       font-weight: bold;
       fill: #0D6AEB;
     }
@@ -223,7 +223,7 @@
           return key.replace(/:/g, '').replace('-', '_');
         }
 
-        function compliment_stream_id(key) {
+        function complement_stream_id(key) {
           var re = /(([a-f]|[0-9])+)_(([a-f]|[0-9])+)/
           var z = key.match(re)
           return z[3] + "_" + z[1]
@@ -632,7 +632,7 @@
 
         function select_stream(streamId) {
           // unselect all legends
-          d3.selectAll(".legend").classed("selected selectedCompliment", false);
+          d3.selectAll(".legend").classed("selected selectedComplement", false);
           // unselect all points
           d3.selectAll(".points").attr("fill", "grey")
 
@@ -640,11 +640,11 @@
           if (!selected_stream || streamId != to_valid_selector_id(selected_stream.key)){
             // select current legend
             d3.select('#legend_' + streamId).classed("selected", true);
-            d3.select('#legend_' + compliment_stream_id(streamId)).classed("selectedCompliment", true); 
+            d3.select('#legend_' + complement_stream_id(streamId)).classed("selectedComplement", true); 
             // select these points
             for (var idx in to_plot){ 
               d3.selectAll('#pcap_vs_' + to_plot[idx] + '_' + streamId).attr("fill", "orange")
-              d3.selectAll('#pcap_vs_' + to_plot[idx] + '_' + compliment_stream_id(streamId)).attr("fill", "#0D6AEB")
+              d3.selectAll('#pcap_vs_' + to_plot[idx] + '_' + complement_stream_id(streamId)).attr("fill", "#0D6AEB")
             }
             // to do - make this work for flip also 
             for (var idx in stream2packets) {
