@@ -210,11 +210,7 @@
         function to_stream_key(d) {
           return d['ta'] + '-' + d['ra'];
         }
-/*
-        function to_stream_opposite_key(d) {
-          return d['ra'] + '-' + d['ta'];
-        }
-*/
+        
         function from_stream_key(key) {
           return {'ta': key.split('-')[0], 'ra': key.split('-')[1]};
         }
@@ -228,16 +224,6 @@
           var z = key.match(re)
           return z[3] + "_" + z[1]
         }
-
-        /*
-        function to_opposite_valid_selector_id(key) {
-          var re = /(([a-f]|[0-9]|:)+)\-(([a-f]|[0-9]|:)+)/
-          var z = key.match(re)
-          key = z[3] + "-" + z[1]
-          return key.replace(/:/g, '').replace('-', '_');
-        }
-        */
-
 
         function init(json_string) {
           // TODO(katepek): Should sanitize here? E.g., discard bad packets?
@@ -429,7 +415,6 @@
 
           stream2packets.forEach(function(d, i) {
             var current_plot_id = 'pcap_vs_' + field + '_' + to_valid_selector_id(d.key);
-            //log(d.key + "(" + d.values.length + ")");
 
             svg
               .selectAll(current_plot_id)
