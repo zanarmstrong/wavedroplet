@@ -266,10 +266,9 @@
           log('height = ' + height);
 
           add_scale('pcap_secs', x_range);
-          for (var idx in to_plot) {
-            add_scale(to_plot[idx], y_range);
-          }
+          to_plot.forEach(function(d){add_scale(d, y_range)});
         }
+        
 
         function sanitize_dataset() {
           log('Before filtering: ' + dataset.length);
