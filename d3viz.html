@@ -309,9 +309,8 @@
         function draw() {
           add_butter_bar();
 
-          for (var idx in to_plot) {
-            visualize(to_plot[idx]);
-          }
+          to_plot.forEach(function(d){visualize(d)})
+
           add_legend();
         }
 
@@ -621,7 +620,7 @@
               d3.selectAll('.pcap_vs_' + to_plot[idx] + '_' + streamId).attr("fill", "orange")
               d3.selectAll('.pcap_vs_' + to_plot[idx] + '_' + complement_stream_id(streamId)).attr("fill", "#0D6AEB")
             }
-            // to do - make this work for flip also 
+            // to do - make this work for flip also
             for (var idx in stream2packets) {
               if (to_valid_selector_id(stream2packets[idx].key) == streamId) {
                 // set selected_stream so that it's locked to that stream when mousing over
