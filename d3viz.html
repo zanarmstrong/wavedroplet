@@ -178,6 +178,8 @@
         // When not null, crosshairs will focus only on packets for this stream.
         var selected_stream = null; // one of the key-value pairs of stream2packets
 
+        
+        // input json file found at URL + '/json/' + get_query_param('key')[0]
         try {
           $.getJSON('/json/' + get_query_param('key')[0], function(json) {
               var begin = new Date().getTime();
@@ -448,6 +450,7 @@
           function showZoom(d) {
             d3.selectAll(".axis.x").call(pcapSecsAxis);
             d3.selectAll(".points").attr('cx', scaled('pcap_secs'))
+            console.log(zoom.scale())
           }
           // end zooming
           
