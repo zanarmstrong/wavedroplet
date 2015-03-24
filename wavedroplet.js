@@ -547,7 +547,11 @@ function select_stream(streamId) {
         d3.select('.legend_' + complement_stream_id(streamId)).classed("selectedComplement", true).classed("selected", false);
         // select these points
         for (var idx in to_plot) {
-            d3.selectAll('.pcap_vs_' + to_plot[idx] + '_' + streamId).classed("selected", true).classed("selectedComplement", false);
+
+            d3.selectAll('.pcap_vs_' + to_plot[idx] + '_' + streamId)
+                .classed("selected", true)
+                .classed("selectedComplement", false);
+
             d3.selectAll('.pcap_vs_' + to_plot[idx] + '_' + complement_stream_id(streamId))
                 .classed("selectedComplement", true)
                 .classed("selected", false);
