@@ -502,9 +502,7 @@ function closest_to_y(search_in, idx, x, y, scaled_y, field) {
 function draw_crosshairs(d, field) {
     var detailedInfo = d;
 
-    for (var i in Object.keys(reticle)) {
-        var r_field = Object.keys(reticle)[i];
-
+    for (var r_field in reticle) {
         var closest_x = scaled('pcap_secs')(d);
         var closest_y = scaled(r_field)(d);
 
