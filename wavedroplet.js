@@ -86,20 +86,17 @@ var stream2packetsArray = [];
 // When not null, crosshairs will focus only on packets for this stream.
 var selected_stream = null; // one of the key-value pairs of stream2packets
 
-// input json file found at URL + '/json/' + get_query_param('key')[0]
-try {
-    $.getJSON('/json/' + get_query_param('key')[0], function(json) {
-        var begin = new Date().getTime();
+d3.json('/json/' + get_query_param('key')[0], function(error, json) {
+    if (error) return console.error('error');
 
-        init(JSON.stringify(json));
-        draw();
+    var begin = new Date().getTime();
 
-        var end = new Date().getTime();
-        log('Spent on visualization ' + ((end - begin) / 1000) + ' sec.');
-    });
-} catch (error) {
-    console.log(error);
-}
+    init(JSON.stringify(json));
+    draw();
+
+    var end = new Date().getTime();
+    log('Spent on visualization ' + ((end - begin) / 1000) + ' sec.');
+})
 
 function get_query_param(param) {
     var urlKeyValuePairs = {}
@@ -452,7 +449,6 @@ function find_packet(x, y, field) {
     var pcap_secs = scales['pcap_secs'].invert(x);
     var search_in = dataset;
 
-    // this mouseover to a particular stream - will maintain functionality for now
     if (selected_stream) {
         search_in = stream2packetsDict[selected_stream].values;
     }
