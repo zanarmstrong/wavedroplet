@@ -160,7 +160,7 @@ function init(json) {
     sanitize_dataset();
 
     dataset.sort(function(x, y) {
-        return raw('pcap_secs')(x) - raw('pcap_secs')(y);
+        return x['pcap_secs'] - y['pcap_secs'];
     });
 
     dataset.forEach(function(d) {
@@ -178,7 +178,6 @@ function init(json) {
     stream2packetsArray.sort(function(a, b) {
         return stream2packetsDict[b].values.length - stream2packetsDict[a].values.length
     })
-
 
     // TODO(katepek): Recalculate and redraw when resized
     height = (total_height - 3 * to_plot.length * padding) / to_plot.length;
@@ -200,10 +199,10 @@ function init(json) {
 function sanitize_dataset() {
     log('Before filtering: ' + dataset.length);
     dataset = dataset.filter(function(d) {
-        if (!d.hasOwnProperty('pcap_secs')) return false;
-        if (raw('pcap_secs')(d) <= 0) return false;
+        if (!d['pcap_secs']) return false;
+        if (d['pcap_secs'] <= 0) return false;
 
-        if (!d.hasOwnProperty('ta') || !d.hasOwnProperty('ra'))
+        if (!d['ta'] || !d['ra'])
             return false;
 
         for (var idx in to_plot) {
@@ -216,35 +215,21 @@ function sanitize_dataset() {
 
 function add_scale(field, range) {
     scales[field] = d3.scale[field_settings[field]['scale_type']]()
-        .domain([d3.min(dataset, raw(field)),
-            d3.max(dataset, raw(field))
+        .domain([d3.min(dataset, function(d) {
+                return d[field]
+            }),
+            d3.max(dataset, function(d) {
+                return d[field]
+            })
         ])
         .range(range);
 }
 
-// zan - improve this!
-function raw(name) {
-    return function(d) {
-        if (name != 'seq' || name != 'rate') {
-            return parseFloat(d[name]);
-        } else {
-            return Number(d[name]);
-        }
-    }
-}
-
-// zan - this is also slow
 function scaled(name) {
     return function(d) {
-        if (name != 'seq' && name != 'rate') {
-            return scales[name](parseFloat(d[name]));
-        } else {
-            return scales[name](Number(d[name]));
-        }
+        return scales[name](d[name]);
     }
 }
-
-
 
 function draw() {
     add_butter_bar();
@@ -457,7 +442,9 @@ function visualize(field) {
 }
 
 function binary_search_by(field) {
-    return d3.bisector(raw(field)).left;
+    return d3.bisector(function(d) {
+        return d[field]
+    }).left;
 }
 
 function find_packet(x, y, field) {
