@@ -1,134 +1,6 @@
 "use strict";
 
-// hi
-
-var debug = false;
-
-function log(o) {
-    if (debug) {
-        console.log(o);
-    }
-}
-
-var w = window,
-    d = document,
-    e = d.documentElement,
-    g = d.getElementsByTagName('body')[0];
-
-var total_width = w.innerWidth || e.clientWidth || g.clientWidth;
-var total_height = w.innerHeight || e.clientHeight || g.clientHeight;
-var sidebar_width = 180;
-var dim = {
-    width: 0,
-    height: 0,
-    padding: 30,
-};
-
-// height of overview chart
-var histHeight = 80;
-
-var tooltipLabelsHeight = 15; // height per line in detailed mouseover view
-var number_of_packets;
-
-var availableMetrics = [
-    "ta",
-    "ra",
-    "typestr",
-    "seq",
-    "rate",
-    "orig_len",
-    "pcap_secs",
-    "mac_usecs",
-    "streamId",
-    "antenna",
-    "dbm_antnoise",
-    "dbm_antsignal",
-    "dsmode",
-    "duration",
-    "powerman",
-    "retry",
-];
-
-var selectableMetrics = [
-    "seq",
-    "mcs",
-    "spatialstreams",
-    "bw",
-    "rate",
-    "retry",
-    "type",
-    "typestr",
-    "dsmode",
-    "dbm_antsignal",
-    "dbm_antnoise",
-    "bad"
-];
-
-// define settings per viewable metric
-var field_settings = {
-    'pcap_secs': {
-        'parser': parseFloat,
-        'scale_type': 'linear',
-    },
-    'seq': {
-        'parser': Number,
-        'scale_type': 'linear',
-    },
-    'rate': {
-        'parser': Number,
-        'scale_type': 'linear',
-    }
-}
-
-for (var i in selectableMetrics) {
-    if (!field_settings[selectableMetrics[i]]) {
-        field_settings[selectableMetrics[i]] = {
-            'parser': parseFloat,
-            'scale_type': 'linear'
-        }
-    }
-}
-
-// global variables
-var state = {
-    to_plot: [],
-    scales: [],
-    // When not null, crosshairs will focus only on packets for this stream.
-    selected_stream: null
-}
-var reticle = {}; // dict[field; crosshair]
-var histogramPacketNum = [] // array to be used to create overview histogram
-
-var pcapSecsAxis = d3.svg.axis()
-    .tickFormat(hourMinuteMilliseconds)
-    .orient('bottom')
-    .ticks(5);
-
-var dataset; // all packets, sorted by pcap_secs
-var stream2packetsDict = {};
-var stream2packetsArray = [];
-
-// set up brush and brushed function
-var brush = d3.svg.brush()
-    .on("brush", function() {
-        zoom_to_domain(brush.empty() ? state.scales['pcap_secs_fixed'].domain() : brush.extent())
-    });
-
-// get data & visualize
-d3.json('/json/' + decodeURIComponent(get_query_param('key')[0]), function(error, json) {
-    if (error) return console.error('error', error);
-
-    var begin = new Date().getTime();
-
-    // update title
-    document.getElementById("title").innerHTML = json.filename;
-
-    init(json);
-    draw();
-
-    var end = new Date().getTime();
-    log('Spent on visualization ' + ((end - begin) / 1000) + ' sec.');
-})
+var w = window;
 
 function get_query_param(param) {
     var urlKeyValuePairs = {}
@@ -139,94 +11,92 @@ function get_query_param(param) {
     return urlKeyValuePairs[param].split(',')
 }
 
-function to_stream_key(d, aliases) {
-    return d['ta'].replace(/:/g, '') + '---' + d['ra'].replace(/:/g, '');
-}
 
-function to_visible_stream_key(d) {
-    return d.replace(/---/g, '→')
-}
+var margin = {
+        top: 20,
+        right: 0,
+        bottom: 10,
+        left: 20
+    },
+    width = 1397,
+    height = 1397;
 
-function to_css_stream_key(d) {
-    return d.replace(/→/g, '---')
-}
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-function replace_address_with_alias(d, aliases) {
-    d['ta'] = aliases[d['ta']] || d['ta']
-    d['ra'] = aliases[d['ra']] || d['ra']
-}
+svg.append("rect")
+    .attr("class", "background")
+    .attr("width", width)
+    .attr("height", height);
 
-function complement_stream_id(key) {
-    // match any letter/number for aliases
-    var re = /(([a-z]|[A-Z]|[0-9])+)---(([a-z]|[A-Z]|[0-9])+)/
-    var z = key.match(re)
-    return z[3] + "---" + z[1]
-}
+
+// data structures
+var dataset; // all packets, sorted by pcap_secs
+var stream2packetsDict = {};
+var stream2packetsArray = [];
+var deviceDict = {};
+var deviceCount = 0;
+var deviceArray = [];
+
+// get data & visualize
+d3.json('/json/' + decodeURIComponent(get_query_param('key')[0]), function(error, json) {
+    if (error) return console.error('error', error);
+
+    init(json);
+    draw();
+})
 
 function init(json) {
     // TODO(katepek): Should sanitize here? E.g., discard bad packets?
     // Packets w/o seq?
     dataset = json.js_packets;
 
-    state.to_plot = get_query_param('to_plot');
-
-    // Leave only packets that have all the fields that we want to plot
-    sanitize_dataset();
-
     dataset.sort(function(x, y) {
         return x['pcap_secs'] - y['pcap_secs'];
     });
-
-    // TODO(katepek): Recalculate and redraw when resized
-    dim.height = Math.max((total_height - histHeight - (state.to_plot.length + 1) * dim.padding) / state.to_plot.length, 200);
-    dim.width = total_width - 4 * dim.padding - sidebar_width;
-
-    var x_range = [dim.padding, dim.width - 2 * dim.padding];
-    var y_range = [dim.height - dim.padding, dim.padding];
-
-    log('total_height = ' + total_height);
-    log('height = ' + dim.height);
-
-    add_scale('pcap_secs', x_range);
-    state.to_plot.forEach(function(d) {
-        add_scale(d, y_range)
-    });
-    // add scale for legend, based on pcap_secs scale
-    state.scales['pcap_secs_fixed'] = d3.scale.linear().domain(state.scales['pcap_secs'].domain()).range(state.scales['pcap_secs'].range());
-
-    pcapSecsAxis.scale(state.scales['pcap_secs']);
 
     // get array of all packetSecs and use a histogram
     var packetSecs = []
 
     dataset.forEach(function(d) {
-        // store time of packet
-        packetSecs.push(d.pcap_secs)
-
         replace_address_with_alias(d, json.aliases);
         // track streams
-        var streamId = to_stream_key(d, json.aliases);
-        d.streamId = streamId;
-        if (!stream2packetsDict[streamId]) {
-            stream2packetsDict[streamId] = {
+        if (d['ta'] != null) {
+            d['ta'] = d['ta'].replace(/:/g, '')
+        }
+        if (d['ra'] != null) {
+            d['ra'] = d['ra'].replace(/:/g, '')
+        }
+        d.streamId = to_stream_key(d, json.aliases);
+        if (!stream2packetsDict[d.streamId]) {
+            stream2packetsDict[d.streamId] = {
                 values: [d]
             };
-            stream2packetsArray.push(streamId);
+            stream2packetsArray.push(d.streamId);
         } else {
-            stream2packetsDict[streamId].values.push(d);
+            stream2packetsDict[d.streamId].values.push(d);
         }
-    })
 
-    // set up histogram with 1000 bins
-    number_of_packets = packetSecs.length;
-    histogramPacketNum = d3.layout.histogram().bins(1000)(packetSecs);
+        if (!deviceDict[d['ta']]) {
+            deviceDict[d['ta']] = {
+                count: 1
+            };
+            deviceArray.push(d['ta']);
+        } else {
+            deviceDict[d['ta']].count++;
+        }
 
-    // construct array to keep track of bin edges relative to dataset slices to aid in adding/removing points
-    var dataSliceTracker = [];
-    var count = 0;
-    histogramPacketNum.forEach(function(d, i) {
-        dataSliceTracker.push(count)
-        count = count + d.y;
+        if (!deviceDict[d['ra']]) {
+            deviceDict[d['ra']] = {
+                count: 1
+            };
+            deviceArray.push(d['ra'])
+        } else {
+            deviceDict[d['ra']].count++;
+        }
     })
 
     // sort streams by number of packets per stream
@@ -234,497 +104,56 @@ function init(json) {
         return stream2packetsDict[b].values.length - stream2packetsDict[a].values.length
     })
 
+    deviceArray.sort(function(a, b) {
+        return deviceDict[b].count - deviceDict[a].count
+    })
+
+    deviceArray.forEach(function(d, i) {
+        deviceDict[d].order = i;
+    })
+
 }
 
-
-function sanitize_dataset() {
-    log('Before filtering: ' + dataset.length);
-    dataset = dataset.filter(function(d) {
-        if (!d['pcap_secs']) return false;
-        if (d['pcap_secs'] <= 0) return false;
-
-        if (!d['ta'] || !d['ra'])
-            return false;
-
-        for (var idx in state.to_plot) {
-            if (!d.hasOwnProperty(state.to_plot[idx])) return false;
-        }
-        return true;
-    });
-    log('After filtering: ' + dataset.length);
-}
-
-function add_scale(field, range) {
-    state.scales[field] = d3.scale[field_settings[field]['scale_type']]()
-        .domain([d3.min(dataset, function(d) {
-                return d[field]
-            }),
-            d3.max(dataset, function(d) {
-                return d[field]
-            })
-        ])
-        .range(range);
-}
-
-function scaled(name) {
-    return function(d) {
-        return state.scales[name](d[name]);
-    }
-}
+var regexTest = /(([a-z]|[A-Z]|[0-9])+)---(([a-z]|[A-Z]|[0-9])+)/
 
 function draw() {
-    add_butter_bar();
-
-    add_overview();
-
-    state.to_plot.forEach(function(d) {
-        visualize(d, dim)
-    })
-
-    add_legend();
-}
-
-
-function add_overview() {
-    var max = 0;
-
-    // find max bar height and use to set Y axis for overview chart
-    histogramPacketNum.forEach(function(d) {
-        if (d.y > max) {
-            max = d.y;
-        }
-    })
-    state.scales["packetNumPerTenth"] = d3.scale.linear().domain([0, max]).range([histHeight, 0])
-
-    // set up axis
-    var overviewYaxis = d3.svg.axis()
-        .scale(state.scales['packetNumPerTenth'])
-        .orient('right')
-        .ticks(3);
-
-    var overviewXaxis = d3.svg.axis()
-        .scale(state.scales['pcap_secs_fixed'])
-        .tickFormat(hourMinuteMilliseconds)
-        .orient('bottom')
-        .ticks(5);
-
-    // start building the chart
-    var svg = d3
-        .select('body')
-        .append('svg')
-        .attr('id', 'histogramZoomNav')
-        .attr('width', dim.width)
-        .attr('height', histHeight + 20);
-
-    // append x-axis
-    svg.append('g')
-        .attr('class', 'axis x overview')
-        .attr('transform', 'translate(0,' + histHeight + ')')
-        .call(overviewXaxis);
-
-    svg.append('g')
-        .attr('class', 'axis y overview')
-        .attr('transform', 'translate(' + (dim.width - 2 * dim.padding) + ', 0)')
-        .call(overviewYaxis);
-
-    // draw bars
-    svg.selectAll(".histBar")
-        .data(histogramPacketNum)
+    svg.selectAll('rect').data(stream2packetsArray)
         .enter().append("rect")
-        .attr("class", "histBar")
-        .attr("x", function(d) {
-            return state.scales['pcap_secs_fixed'](d.x)
-        })
-        .attr("y", function(d) {
-            return state.scales["packetNumPerTenth"](d.y);
+        .attr("class", function(d) {
+            var k = d.match(regexTest)
+            return "ta" + k[1] + " ra" + k[3];
         })
         .attr("width", function(d) {
-            return state.scales['pcap_secs_fixed'](d.x + d.dx) - state.scales['pcap_secs_fixed'](d.x)
+            // stream2packetsDict[d].values.length
+            return 1
         })
         .attr("height", function(d) {
-            return histHeight - state.scales["packetNumPerTenth"](d.y)
-        });
-
-    // set initial x value for brush
-    brush.x(state.scales['pcap_secs_fixed'])
-
-    // append brush
-    svg.append("g")
-        .attr("class", "x brush")
-        .call(brush)
-        .selectAll("rect")
-        .attr("y", -6)
-        .attr("height", histHeight + 7);
-}
-
-function add_butter_bar() {
-    var svg = d3
-        .select('body')
-        .append('svg')
-        .attr('id', 'butter_bar')
-        .attr('width', dim.width)
-        .attr('height', dim.padding);
-    svg.append('rect')
-        .attr('id', 'butter_bar_box')
-        .attr('width', dim.width)
-        .attr('height', dim.padding)
-        .style('fill', 'none');
-    svg.append('text')
-        .attr('id', 'butter_bar_msg')
-        .attr('class', 'legend')
-        .attr('x', dim.width / 2 - 4 * dim.padding)
-        .attr('y', 2 + dim.padding / 2)
-        .style('fill', 'black')
-        .style('font-size', 14);
-}
-
-function add_legend() {
-    var svg = d3
-        .select('body')
-        .append('svg')
-        .attr('class', 'legend')
-        .attr('width', dim.width)
-        .attr('height', dim.height);
-
-    var font_width = 6;
-    var key_length = font_width * ((12 + 5) * 2 + 1);
-    var total_length = key_length + 4 * dim.padding;
-    var n_cols = Math.floor(total_width / total_length);
-
-    for (var i in stream2packetsArray) {
-        var streamId = stream2packetsArray[i];
-        var count = stream2packetsDict[streamId].values.length;
-        // only show on legend if more than 1% belong to this stream
-        if (count > number_of_packets * .01) {
-            var col = i % n_cols;
-            var row = Math.floor(i / n_cols);
-            svg.append('text')
-                .attr('class', 'legend stream_' + streamId)
-                .attr('x', col * total_length + 2 * dim.padding)
-                .attr('y', (row + 1.5) * dim.padding)
-                .text(to_visible_stream_key(streamId))
-                .on('click', function() {
-                    select_stream(to_css_stream_key(this.textContent));
-                });
-        } else {
-            break;
-        }
-    }
-}
-
-function butter_bar(text) {
-    d3.select('text#butter_bar_msg')
-        .style('opacity', 1)
-        .text(text);
-    d3.select('rect#butter_bar_box')
-        .style('opacity', 1)
-        .style('fill', 'red');
-    d3.select('text#butter_bar_msg')
-        .transition()
-        .duration(2000)
-        .style('opacity', 0);
-    d3.select('rect#butter_bar_box')
-        .transition()
-        .duration(700)
-        .style('opacity', 0);
-}
-
-d3.select('#tooltip')
-    .style('top', (2 * dim.padding) + 'px')
-    .classed('hidden', true)
-    .append("svg")
-    .attr("width", 200)
-    .attr("height", availableMetrics.length * tooltipLabelsHeight)
-    .selectAll('.tooltipValues')
-    .data(availableMetrics)
-    .enter()
-    .append("text")
-    .attr("class", "tooltipValues")
-    .attr("y", function(k, i) {
-        return i * tooltipLabelsHeight + 10
-    });
-
-function visualize(field, dim) {
-    log('About to visualize ' + field);
-
-    // set up main svg for plot
-    var svg = d3.select('body')
-        .append('svg')
-        .attr('class', 'plot_' + field)
-        .attr('width', dim.width)
-        .attr('height', dim.height);
-
-    // set up crosshairs element
-    reticle[field] = svg.append('g')
-        .attr("class", "focus")
-        .style('display', null);
-
-    // draw points
-    stream2packetsArray.forEach(function(d) {
-        draw_points_per_stream(field, d, stream2packetsDict, svg)
-    });
-
-    // x and y axis
-    draw_metric_axes(svg, field, dim);
-
-    // Add crosshairs
-    draw_crosshairs(reticle[field]);
-
-    // append the rectangle to capture mouse movements
-    draw_hidden_rect_for_mouseover(svg, field)
-}
-
-// visualization set up functions
-function draw_points_per_stream(fieldName, streamId, packetsDictionary, svg) {
-    svg.append('g').attr("class", 'pcap_vs_' + fieldName + " stream_" + streamId + " metricChart").attr("fill", 'grey')
-        .selectAll('.points')
-        .data(packetsDictionary[streamId].values)
-        .enter()
-        .append('circle')
-        .attr('class', 'points')
-        .attr('cx', scaled('pcap_secs'))
-        .attr('cy', scaled(fieldName))
-        .attr('r', 2);
-}
-
-function draw_metric_axes(svg, fieldName, dim) {
-    var yAxis = d3.svg.axis()
-        .scale(state.scales[fieldName])
-        .orient('right')
-        .ticks(5);
-
-    // x axis
-    var xaxis = svg.append('g')
-        .attr('class', 'axis x metric')
-        .on("dblclick", function() {
-            var currentDomain = state.scales['pcap_secs'].domain();
-            var zoomCenter = state.scales['pcap_secs'].invert(d3.event.x);
-
-            var newDomain = [(zoomCenter - currentDomain[0]) / 2 + currentDomain[0], (zoomCenter - currentDomain[1]) / 2 + currentDomain[1]];
-
-            // update brush domain and visible extent
-            brush.extent(newDomain)
-            d3.selectAll(".brush").call(brush)
-
-            zoom_to_domain(newDomain)
+            return 1
         })
-        .attr('transform', 'translate(0,' + (dim.height - dim.padding) + ')')
-
-    xaxis.call(pcapSecsAxis);
-    xaxis.append("rect").attr('height', dim.padding).attr('width', dim.width).style('opacity', 0);
-
-    // title for plot
-    svg.append("text")
-        .attr('transform', 'translate(' + dim.width / 2 + ',' + (dim.height - dim.padding + 30) + ')')
-        .attr("class", "text-label")
-        .attr("text-anchor", "middle")
-        .text(fieldName);
-
-    // y axis
-    svg.append('g')
-        .attr('class', 'axis y')
-        .attr('transform', 'translate(' + (dim.width - 2 * dim.padding) + ',0)')
-        .call(yAxis);
-}
-
-function zoom_to_domain(newDomain) {
-    // update charts
-    state.scales['pcap_secs'].domain(newDomain);
-    d3.selectAll(".axis.x.metric").call(pcapSecsAxis);
-    d3.selectAll(".points").attr('cx', scaled('pcap_secs'))
-}
-
-function draw_hidden_rect_for_mouseover(svg, fieldName) {
-    svg.append('rect')
-        .attr('width', dim.width)
-        .attr('height', dim.height - dim.padding)
-        .attr("class", "plotRect")
-        .style('fill', 'none')
-        .style('pointer-events', 'all')
-        .on('mouseover', function() {
-            d3.selectAll(".focus").classed("hidden", false)
+        .attr("x", 0)
+        .attr("y", 0)
+        .attr("opacity", .2)
+        .attr("transform", function(d, i) {
+            var k = d.match(regexTest)
+            return "translate(" + deviceDict[k[1]].order + " ," + deviceDict[k[3]].order + ")";
         })
-        .on('mouseout', function() {
-            var x = d3.mouse(this)[0];
-            if (x < state.scales['pcap_secs'].range()[0] ||
-                x > state.scales['pcap_secs'].range()[1]) {
-                d3.select('#tooltip').classed("hidden", true)
-                d3.selectAll(".focus").classed("hidden", true)
-            }
+        .style("fill", function(d) {
+            return "blue";
         })
-        .on('click', function() {
-            d = find_packet(d3.mouse(this)[0], d3.mouse(this)[1], fieldName, false);
-            if (!d) return;
-            select_stream(d.streamId);
-            update_crosshairs(d, fieldName);
-        })
-        .on('mousemove', function() {
-            d = find_packet(d3.mouse(this)[0], d3.mouse(this)[1], fieldName, true);
-            //      if (!state.selected_stream) {
-            //          // do nothing
-            //      }
-            if (!d) return;
-            update_crosshairs(d, fieldName);
-        });
+        .on("mouseover", mouseover)
+        .on("mouseout", mouseout);;
 }
 
-function draw_crosshairs(element) {
-    element.append('line')
-        .attr('class', 'x')
-        .attr('y1', 0)
-        .attr('y2', dim.height);
+function mouseover(stream) {}
 
-    element.append('line')
-        .attr('class', 'y')
-        .attr('x1', 0)
-        .attr('x2', dim.width);
+function mouseout() {}
 
-    element.append('circle')
-        .attr('class', 'y')
-        .attr('r', 7);
 
-    element.append('text')
-        .attr('class', 'y1')
-        .attr('dx', 8)
-        .attr('dy', '-.5em');
+function replace_address_with_alias(d, aliases) {
+    d['ta'] = aliases[d['ta']] || d['ta']
+    d['ra'] = aliases[d['ra']] || d['ra']
 }
 
-
-function binary_search_by(field) {
-    return d3.bisector(function(d) {
-        return d[field]
-    }).left;
-}
-
-function find_packet(x, y, field, lock) {
-    if (x < state.scales['pcap_secs'].range()[0] ||
-        x > state.scales['pcap_secs'].range()[1] ||
-        y > total_height)
-        return;
-
-    var pcap_secs = state.scales['pcap_secs'].invert(x);
-    var search_in = dataset;
-
-    if (state.selected_stream && lock) {
-        search_in = stream2packetsDict[state.selected_stream].values;
-    }
-
-    var idx = binary_search_by('pcap_secs')(search_in, pcap_secs, 0);
-    d = closest_to_y(search_in, idx, x, y, scaled(field), field);
-
-    return d;
-}
-
-function closest_to_y(search_in, idx, x, y, scaled_y, field) {
-    var idx_range = 50;
-    var x_range = 10;
-    var scaled_x = scaled('pcap_secs');
-
-    if (search_in.length > 1) {
-        idx = Math.abs(x - scaled_x(search_in[idx - 1])) >
-            Math.abs(x - scaled_x(search_in[idx])) ?
-            idx : idx - 1;
-    } else {
-        idx = 0;
-    }
-    var begin = Math.max(0, idx - idx_range);
-    var end = Math.min(search_in.length - 1, idx + idx_range);
-
-    var closest_idx = idx;
-
-    var min_x = Math.abs(x - scaled_x(search_in[idx]));
-    var min_y = Math.abs(y - scaled_y(search_in[idx]));
-
-    for (var i = begin; i <= end; i++) {
-        if (Math.abs(x - scaled_x(search_in[i])) > x_range) {
-            continue; // too far away
-        }
-        if (Math.abs(y - scaled_y(search_in[i])) < min_y ||
-            (Math.abs(y - scaled_y(search_in[i])) == min_y &&
-                Math.abs(x - scaled_x(search_in[i])) < min_x)) {
-            min_x = Math.abs(x - scaled_x(search_in[i]));
-            min_y = Math.abs(y - scaled_y(search_in[i]));
-            closest_idx = i;
-        }
-    }
-
-    return search_in[closest_idx];
-}
-
-function update_crosshairs(d, field) {
-    var detailedInfo = d;
-
-    for (var r_field in reticle) {
-        var closest_x = scaled('pcap_secs')(d);
-        var closest_y = scaled(r_field)(d);
-
-        reticle[r_field].select('.x')
-            .attr('transform', 'translate(' + closest_x + 10 + ',0)');
-        reticle[r_field].select('.y')
-            .attr('transform', 'translate(0,' + closest_y + ')');
-
-        reticle[r_field].select('circle.y')
-            .attr('transform',
-                'translate(' + closest_x + ',' + closest_y + ')');
-    }
-
-    update_show_Tooltip(detailedInfo);
-}
-
-function update_show_Tooltip(data) {
-    d3.select('#tooltip')
-        .classed('hidden', false)
-        .selectAll(".tooltipValues")
-        .data(availableMetrics)
-        .text(function(k) {
-            if (k == "streamId") {
-                return k + ": " + to_visible_stream_key(data[k]);
-            }
-            return k + ": " + data[k]
-        });
-}
-
-function highlight_stream(streamId) {
-    d3.selectAll(".legend").classed("selected", false).classed("selectedComplement", false)
-
-    state.to_plot.forEach(function(d) {
-        d3.selectAll(".pcap_vs_" + d).classed("selected", false).classed("selectedComplement", false)
-    })
-
-    // select these points
-    d3.selectAll('.stream_' + streamId)
-        .classed("selected", true)
-        .classed("selectedComplement", false);
-
-    d3.selectAll('.stream_' + complement_stream_id(streamId))
-        .classed("selectedComplement", true)
-        .classed("selected", false);
-}
-
-function select_stream(streamId) {
-
-    // if new stream selected, update view & selected stream
-    if (!state.selected_stream || streamId != state.selected_stream) {
-
-        // need to clear because from the legend the user can click on another stream even when a stream is "locked"
-        // which is not possible from the points since you can only mouseover your state.selected_stream
-        highlight_stream(streamId);
-
-        state.selected_stream = streamId;
-        butter_bar('Locked to: ' + to_visible_stream_key(streamId));
-    } else {
-        d3.selectAll(".selected").classed("selected", false);
-        d3.selectAll(".selectedComplement").classed("selectedComplement", false);
-        state.selected_stream = null;
-        butter_bar('Unlocked')
-    }
-}
-
-// time formatting functions
-function hourMinuteMilliseconds(d) {
-    return d3.time.format("%H:%M:%S")(new Date(d * 1000))
-}
-
-function milliseconds(d) {
-    return d3.time.format("%L")(new Date(d * 1000))
+function to_stream_key(d, aliases) {
+    return d['ta'] + '---' + d['ra'];
 }

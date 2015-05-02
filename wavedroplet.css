@@ -1,3 +1,9 @@
+    .background {
+      fill: none;
+      stroke: black;
+      stroke-width: .1px;
+    }
+
     .legend {
       fill: gray;
       font-size: 14px;
