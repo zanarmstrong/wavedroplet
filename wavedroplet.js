@@ -1,5 +1,7 @@
 "use strict";
 
+// hi
+
 var debug = false;
 
 function log(o) {
