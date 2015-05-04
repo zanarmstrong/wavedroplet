@@ -13,13 +13,13 @@ function get_query_param(param) {
 
 
 var margin = {
-        top: 20,
+        top: 100,
         right: 0,
         bottom: 10,
-        left: 20
+        left: 100
     },
-    width = 1397,
-    height = 1397;
+    width = 700,
+    height = 700;
 
 var svg = d3.select("body").append("svg")
     .attr("width", width + margin.left + margin.right)
@@ -61,15 +61,27 @@ function init(json) {
     // get array of all packetSecs and use a histogram
     var packetSecs = []
 
+    var countBad = 0;
     dataset.forEach(function(d) {
+
+        // exclude packets if "bad", but count them
+        if (d['bad'] == 1) {
+            countBad++;
+            return false;
+        }
+
+        // manage aliases
         replace_address_with_alias(d, json.aliases);
-        // track streams
+
+        // remove : if not null
         if (d['ta'] != null) {
             d['ta'] = d['ta'].replace(/:/g, '')
         }
         if (d['ra'] != null) {
             d['ra'] = d['ra'].replace(/:/g, '')
         }
+
+        // to stream key
         d.streamId = to_stream_key(d, json.aliases);
         if (!stream2packetsDict[d.streamId]) {
             stream2packetsDict[d.streamId] = {
@@ -99,6 +111,8 @@ function init(json) {
         }
     })
 
+    console.log('number bad: ', countBad, 'number good devices: ', deviceArray.length)
+
     // sort streams by number of packets per stream
     stream2packetsArray.sort(function(a, b) {
         return stream2packetsDict[b].values.length - stream2packetsDict[a].values.length
@@ -117,31 +131,88 @@ function init(json) {
 var regexTest = /(([a-z]|[A-Z]|[0-9])+)---(([a-z]|[A-Z]|[0-9])+)/
 
 function draw() {
-    svg.selectAll('rect').data(stream2packetsArray)
+    var rectWidth = width / deviceArray.length;
+    var rectHeight = height / deviceArray.length;
+
+    // set opacity scale based on max number of packets per unique stream 
+    var opacityScale = d3.scale.log().domain([stream2packetsDict[stream2packetsArray[0]].values.length, 2]).range([1, .2])
+
+    // draw the rectangles!
+    svg.selectAll('.data').data(stream2packetsArray)
         .enter().append("rect")
-        .attr("class", function(d) {
+        .attr("class", function(d, i) {
             var k = d.match(regexTest)
-            return "ta" + k[1] + " ra" + k[3];
+            return "data ta" + k[1] + " ra" + k[3];
         })
         .attr("width", function(d) {
             // stream2packetsDict[d].values.length
-            return 1
+            return rectWidth;
         })
         .attr("height", function(d) {
-            return 1
+            return rectHeight;
         })
         .attr("x", 0)
         .attr("y", 0)
-        .attr("opacity", .2)
+        .attr("opacity", function(d, i) {
+            return opacityScale(stream2packetsDict[d].values.length)
+        })
         .attr("transform", function(d, i) {
             var k = d.match(regexTest)
-            return "translate(" + deviceDict[k[1]].order + " ," + deviceDict[k[3]].order + ")";
+            return "translate(" + (deviceDict[k[1]].order * rectWidth) + " ," + (deviceDict[k[3]].order * rectHeight) + ")";
         })
         .style("fill", function(d) {
-            return "blue";
+            return "blue"
         })
         .on("mouseover", mouseover)
-        .on("mouseout", mouseout);;
+        .on("mouseout", mouseout);
+
+
+    // per column
+    var x = d3.scale.linear().domain([0, deviceArray.length]).range([0, width])
+    var column = svg.selectAll(".column")
+        .data(deviceArray)
+        .enter().append("g")
+        .attr("class", "column")
+        .attr("transform", function(d, i) {
+            return "translate(" + x(i) + ")rotate(-90)";
+        });
+
+    column.append("line")
+        .attr("x1", -width)
+        .style("stroke", "grey")
+        .style("stroke-width", .1);
+
+    column.append("text")
+        .attr("x", +6)
+        .attr("dy", rectWidth - 5)
+        .attr("text-anchor", "start")
+        .attr("font-size", 11)
+        .text(function(d, i) {
+            return d;
+        });
+
+    // per row
+    var row = svg.selectAll(".row")
+        .data(deviceArray)
+        .enter().append("g")
+        .attr("class", "row")
+        .attr("transform", function(d, i) {
+            return "translate(0," + x(i) + ")";
+        });
+
+    row.append("line")
+        .attr("x2", width)
+        .style("stroke", "grey")
+        .style("stroke-width", .1);;
+
+    row.append("text")
+        .attr("x", -6)
+        .attr("dy", rectWidth - 5)
+        .attr("text-anchor", "end")
+        .attr("font-size", 11)
+        .text(function(d, i) {
+            return d;
+        });
 }
 
 function mouseover(stream) {}
