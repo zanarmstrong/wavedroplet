@@ -32,9 +32,8 @@ from google.appengine.ext.webapp import blobstore_handlers
 
 BROADCAST = 'ff:ff:ff:ff:ff:ff'
 DEFAULT_FIELDS = ['seq', 'rate']
-AVAIL_FIELDS = ['seq', 'mcs', 'spatialstreams', 'bw', 'rate', 'retry',
-                'type', 'typestr', 'dsmode', 'dbm_antsignal', 'dbm_antnoise',
-                'bad']
+AVAIL_FIELDS = ['seq', 'mcs', 'spatialstreams', 'bw', 'rate', 'retry', 'bad', 'retry-bad',
+                'type', 'typestr', 'dsmode', 'dbm_antsignal', 'dbm_antnoise']
 ALL_FIELDS = ['pcap_secs', 'mac_usecs', 'ta', 'ra', 'antenna',
               'duration', 'orig_len', 'powerman'] + AVAIL_FIELDS
 
@@ -152,8 +151,8 @@ class DownloadHandler(blobstore_handlers.BlobstoreDownloadHandler):
 
 def _Boxes(blob_info):
   """Re-/store from/to memcache number of packets per mac address."""
-
   boxes = memcache.get(str(blob_info.key()), namespace='boxes')
+
   if not boxes:
     reader = blob_info.open()
     boxes = collections.defaultdict(lambda: 0)
@@ -184,6 +183,7 @@ class ViewHandler(_BaseHandler):
                 if n >= cutoff and b != BROADCAST]
     other = sum((n for n in boxes.itervalues() if n < cutoff))
     aliases = pcapdata.aliases
+
     if pcapdata.show_hosts:
       checked = dict((h, 1) for h in pcapdata.show_hosts)
     else:
@@ -221,6 +221,7 @@ class SaveHandler(_BaseHandler):
     pcapdata = PcapData.GetOrInsertFromBlob(blob_info)
     boxes = _Boxes(blob_info)
     pcapdata.show_hosts = []
+
     for b in boxes.keys():
       alias = self.request.get('name-%s' % b)
       if alias:
@@ -242,10 +243,9 @@ class SaveHandler(_BaseHandler):
     capdefault.put()
     pcapdata.put()
 
-    self.redirect('/d3viz.html?key=%s&to_plot=%s'
+    self.redirect('/d3viz.html#key=%s&to_plot=%s'
                   % (_Esc(str(blob_info.key())),
-                     _Esc(','.join(pcapdata.show_fields))))
-
+                  _Esc(','.join(pcapdata.show_fields))))
 
 class _CacheMissing(Exception):
   pass
@@ -334,8 +334,11 @@ class JsonHandler(_BaseHandler):
     pcapdata = PcapData.GetOrInsertFromBlob(blob_info)
 
     self.response.headers['Content-Type'] = 'application/json'
+
     jscache = _MaybeCache(blob_info=blob_info, pcapdata=pcapdata,
                           start_time=None, end_time=None)
+    jscache['filename'] = str(blob_info.filename)
+    jscache["aliases"] = pcapdata.aliases
     self.response.out.write(json.dumps(jscache))
 
 
